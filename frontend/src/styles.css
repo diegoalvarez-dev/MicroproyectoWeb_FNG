@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .input {
+    @apply w-full bg-pizarra-900 border border-pizarra-600 rounded-lg px-3 py-2 text-sm text-slate-200
+           focus:outline-none focus:ring-2 focus:ring-ambar-500/50 focus:border-ambar-500/60 transition;
+  }
+  .btn-primario {
+    @apply bg-ambar-500 hover:bg-ambar-400 text-pizarra-950 font-semibold text-sm px-4 py-2 rounded-lg
+           transition disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primario-outline {
+    @apply border border-ambar-500/60 text-ambar-400 hover:bg-ambar-500/10 font-semibold text-sm px-4 py-2 rounded-lg
+           transition disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-secundario {
+    @apply border border-pizarra-600 text-slate-300 hover:border-slate-400 hover:text-white text-sm px-4 py-2 rounded-lg
+           transition disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+}
+
+body {
+  background-color: #0b0f14;
+  background-image:
+    radial-gradient(circle at 15% 10%, rgba(226,165,58,0.06), transparent 40%),
+    radial-gradient(circle at 85% 0%, rgba(52,211,153,0.05), transparent 35%);
+  color: #e6edf3;
+}
+
+/* flecha de producción, estilo "gramática formal" */
+.flecha-produccion::after {
+  content: '→';
+  color: #e2a53a;
+  margin: 0 0.4rem;
+  font-weight: 700;
+}
+
+.tachado {
+  text-decoration: line-through;
+  text-decoration-color: #fb7185;
+  text-decoration-thickness: 2px;
+  color: #94a3b8;
+}
+
+.resaltado-nueva {
+  background-color: rgba(52,211,153,0.12);
+  border: 1px solid rgba(52,211,153,0.35);
+  color: #6ee7b7;
+}
+
+.scrollbar-delgada::-webkit-scrollbar { height: 8px; width: 8px; }
+.scrollbar-delgada::-webkit-scrollbar-thumb { background: #2b3a4d; border-radius: 8px; }
+.scrollbar-delgada::-webkit-scrollbar-track { background: transparent; }
