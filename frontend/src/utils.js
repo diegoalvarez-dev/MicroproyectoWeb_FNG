@@ -1,0 +1,18 @@
+export function notacionTupla({ variables = [], terminales = [], inicial = '' }) {
+  const V = `{${variables.join(', ')}}`
+  const T = `{${terminales.join(', ')}}`
+  return `G = (${V}, ${inicial}, ${T}, P)`
+}
+
+// Agrupa un texto de gramática "A -> BC | c\nB -> ..." en pares [variable, [alternativas]]
+export function agruparPorVariable(texto) {
+  if (!texto) return []
+  return texto
+    .split('\n')
+    .map((linea) => linea.split('->'))
+    .filter((p) => p.length === 2)
+    .map(([cabeza, cuerpo]) => [
+      cabeza.trim(),
+      cuerpo.split('|').map((s) => s.trim()),
+    ])
+}

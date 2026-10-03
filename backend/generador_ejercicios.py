@@ -1,225 +1,151 @@
 """
 generador_ejercicios.py
-Genera gramáticas aleatorias, válidas en Forma Normal de Chomsky según las
-5 formas acordadas para este proyecto (VntVnt, VtVt, VtVnt, VntVt, Vt),
-pensadas para que el usuario practique el proceso de conversión a FNG a
-mano y luego lo compare contra el resultado automático del sistema
-(mismo enfoque que se usó en el proyecto de Chomsky).
-
-Un ejercicio "interesante" para este tema DEBE contener recursividad a la
-izquierda (inmediata y/o indirecta), porque si no, los pasos 2 y 3 del
-algoritmo de Greibach no tendrían nada que hacer y el ejercicio perdería
-su propósito pedagógico. Por eso el generador, a diferencia de uno
-puramente aleatorio, INYECTA deliberadamente al menos un caso de
-recursividad (configurable) antes de completar el resto de la gramática
-al azar.
+Generador de ejercicios aleatorios en FNC (modo práctica). Usa variables
+con letras mayúsculas (A, B, C...) porque X1, X2... están reservados para
+el paso 1 (renombrado a notación Greibach) del conversor. Recibe
+directamente num_variables, num_terminales, producciones_por_variable_min
+y producciones_por_variable_max (los que manda el frontend según el nivel
+elegido: fácil/media/difícil). Los terminales pueden ser letras o
+números, se evita repetir la misma alternativa dos veces para una misma
+variable, y se inyecta recursividad inmediata e indirecta de forma
+controlada (nunca grupos de más de 2 variables mutuamente recursivas,
+para que la conversión no explote combinatoriamente).
 """
 
 import random
 import string
-from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List
+from models import Gramatica
 
-from models import Gramatica, Produccion
-from validador_fnc import validar_fnc
+ALFABETO_TERMINALES = list(string.ascii_lowercase) + list(string.digits)
+ALFABETO_VARIABLES = list(string.ascii_uppercase)
 
-FORMAS = ["VntVnt", "VtVt", "VtVnt", "VntVt", "Vt"]
-
-
-@dataclass
-class ParametrosGenerador:
-    # Valores conservadores por defecto: el propósito de estos ejercicios
-    # es que el usuario los resuelva A MANO y compare contra el sistema, no
-    # generar la gramática más grande posible. La conversión a FNG crece de
-    # forma combinatoria (ver ejemplo real de la guía: 14 variables -> 248
-    # producciones), así que con más de 5 variables o más de 2 producciones
-    # por variable ya es fácil pasarse de lo que una persona puede resolver
-    # a mano en una sesión de estudio, y con más recursividad simultánea
-    # cruzada el conteo final puede dispararse a miles de producciones.
-    num_variables: int = 4          # recomendado entre 3 y 5
-    num_terminales: int = 2         # recomendado entre 2 y 3
-    producciones_por_variable_min: int = 2
-    producciones_por_variable_max: int = 2
-    incluir_recursividad_inmediata: bool = True
-    incluir_recursividad_indirecta: bool = True
-    semilla: Optional[int] = None
-
-    def __post_init__(self):
-        if self.num_variables > 6:
-            raise ValueError(
-                "num_variables no debería superar 6: la conversión a FNG crece de forma "
-                "combinatoria y una gramática más grande puede volverse impráctica de resolver "
-                "a mano o incluso agotar memoria durante la conversión automática."
-            )
-        if self.producciones_por_variable_max > 3:
-            raise ValueError(
-                "producciones_por_variable_max no debería superar 3, por la misma razón: "
-                "el crecimiento combinatorio de la conversión a Greibach."
-            )
+MIN_VARIABLES = 2
+MAX_VARIABLES = len(ALFABETO_VARIABLES)
+MIN_TERMINALES = 1
+MAX_TERMINALES = len(ALFABETO_TERMINALES)
+MIN_PRODUCCIONES = 1
+MAX_PRODUCCIONES = 4
 
 
-@dataclass
-class Ejercicio:
-    variables: List[str]
-    terminales: List[str]
-    inicial: str
-    producciones: List[str]     # en formato "A -> BC/d/..." listo para la API
-    gramatica: Gramatica
-    tiene_recursividad_inmediata: bool
-    tiene_recursividad_indirecta: bool
-    enunciado: str
-
-
-def _nombres_variables(n: int) -> List[str]:
-    letras = list(string.ascii_uppercase)
-    if n <= len(letras):
-        return letras[:n]
-    # si se piden más de 26, se agregan sufijos numéricos (A1, B1, ...)
-    extra = []
-    i = 1
-    while len(letras) + len(extra) < n:
-        extra.append(f"{letras[len(extra) % len(letras)]}{i}")
-        i += 1
-    return (letras + extra)[:n]
-
-
-def _nombres_terminales(n: int) -> List[str]:
-    letras = list(string.ascii_lowercase)
-    digitos = list(string.digits)
-    disponibles = letras + digitos
-    if n > len(disponibles):
-        n = len(disponibles)
-    return disponibles[:n]
-
-
-def _cuerpo_aleatorio(forma: str, variables: List[str], terminales: List[str],
-                       cabeza: Optional[str] = None) -> List[str]:
+def _cuerpo_aleatorio(variables: List[str], terminales: List[str]) -> List[str]:
+    forma = random.choice(["VntVnt", "VtVt", "VtVnt", "VntVt", "Vt"])
+    if forma == "Vt":
+        return [random.choice(terminales)]
     if forma == "VntVnt":
         return [random.choice(variables), random.choice(variables)]
     if forma == "VtVt":
         return [random.choice(terminales), random.choice(terminales)]
     if forma == "VtVnt":
         return [random.choice(terminales), random.choice(variables)]
-    if forma == "VntVt":
-        return [random.choice(variables), random.choice(terminales)]
-    if forma == "Vt":
-        return [random.choice(terminales)]
-    raise ValueError(f"Forma desconocida: {forma}")
+    return [random.choice(variables), random.choice(terminales)]  # VntVt
 
 
-def generar_ejercicio(params: ParametrosGenerador = None) -> Ejercicio:
-    if params is None:
-        params = ParametrosGenerador()
-    if params.semilla is not None:
-        random.seed(params.semilla)
-
-    variables = _nombres_variables(params.num_variables)
-    terminales = _nombres_terminales(params.num_terminales)
-    inicial = variables[0]
-
-    g = Gramatica(variables=variables, terminales=terminales, inicial=inicial)
-
-    tiene_inmediata = False
-    tiene_indirecta = False
-
-    # 1. Inyectar recursividad inmediata en una variable aleatoria
-    if params.incluir_recursividad_inmediata and len(variables) >= 1:
-        v = random.choice(variables)
-        forma = random.choice(["VntVnt", "VntVt"])
-        if forma == "VntVnt":
-            cuerpo = [v, random.choice(variables)]
-        else:
-            cuerpo = [v, random.choice(terminales)]
-        g.agregar(v, cuerpo)
-        tiene_inmediata = True
-
-    # 2. Inyectar recursividad indirecta entre dos variables distintas
-    if params.incluir_recursividad_indirecta and len(variables) >= 2:
-        x, y = random.sample(variables, 2)
-        g.agregar(x, [y, random.choice(terminales)])
-        g.agregar(y, [x, random.choice(terminales)])
-        tiene_indirecta = True
-
-    # 3. Completar con producciones aleatorias válidas para cada variable.
-    #    IMPORTANTE: se limita fuertemente la probabilidad de que una
-    #    producción "de relleno" inicie en variable (formas VntVnt/VntVt),
-    #    porque cada una de esas es una arista más en el grafo de "primera
-    #    variable" que usa el paso de recursividad indirecta. Si demasiadas
-    #    variables terminan conectadas entre sí, se forma un solo grupo de
-    #    recursividad mutua gigante (en vez de parejas pequeñas como en el
-    #    ejemplo de la guía) y la conversión a FNG explota combinatoriamente.
-    PROB_RELLENO_INICIA_EN_VARIABLE = 0.15
-
-    for v in variables:
-        objetivo = random.randint(params.producciones_por_variable_min,
-                                   params.producciones_por_variable_max)
-        intentos = 0
-        while len(g.producciones_de(v)) < max(objetivo, 1) and intentos < 20:
-            intentos += 1
-            if random.random() < PROB_RELLENO_INICIA_EN_VARIABLE:
-                forma = random.choice(["VntVnt", "VntVt"])
-            else:
-                forma = random.choice(["VtVt", "VtVnt", "Vt"])
-            cuerpo = _cuerpo_aleatorio(forma, variables, terminales)
-            # evitar producciones duplicadas exactas
-            if any(p.cabeza == v and p.cuerpo == cuerpo for p in g.producciones):
-                continue
-            g.agregar(v, cuerpo)
-
-    # 4. Verificación de seguridad #1: la gramática SIEMPRE debe ser FNC
-    #    válida por construcción (defensa extra antes de entregarla).
-    resultado = validar_fnc(g)
-    if not resultado.valido:
-        return generar_ejercicio(ParametrosGenerador(
-            num_variables=params.num_variables,
-            num_terminales=params.num_terminales,
-            incluir_recursividad_inmediata=False,
-            incluir_recursividad_indirecta=False,
-        ))
-
-    # 5. Verificación de seguridad #2: ningún grupo de recursividad mutua
-    #    (componente fuertemente conexa en el grafo de "primera variable")
-    #    puede tener más de 2 variables, o la conversión a FNG corre
-    #    riesgo real de explotar combinatoriamente y agotar memoria. Si
-    #    ocurre, se reintenta la generación completa (con la misma
-    #    dificultad) hasta un máximo de intentos; si aun así no se logra,
-    #    se cae a una versión sin recursividad indirecta inyectada.
+def _sccs_de(g: Gramatica):
     from recursividad import construir_grafo_cabeza, encontrar_sccs
-    grafo = construir_grafo_cabeza(g)
-    sccs = encontrar_sccs(grafo)
-    if any(len(scc) > 2 for scc in sccs):
-        if params.semilla is not None:
-            # con semilla fija no tiene sentido reintentar (daría lo mismo);
-            # se cae directo a una versión más simple y determinista.
-            return generar_ejercicio(ParametrosGenerador(
-                num_variables=params.num_variables,
-                num_terminales=params.num_terminales,
-                producciones_por_variable_min=params.producciones_por_variable_min,
-                producciones_por_variable_max=params.producciones_por_variable_max,
-                incluir_recursividad_indirecta=False,
-                semilla=params.semilla,
-            ))
-        return generar_ejercicio(params)
+    return encontrar_sccs(construir_grafo_cabeza(g))
 
-    lineas = []
-    for v in variables:
-        cuerpos = ["".join(p.cuerpo) for p in g.producciones_de(v)]
-        lineas.append(f"{v} -> " + "/".join(cuerpos))
 
-    enunciado = (
-        f"Dada la siguiente gramática en Forma Normal de Chomsky "
-        f"(variables: {', '.join(variables)}; terminales: {', '.join(terminales)}; "
-        f"símbolo inicial: {inicial}), obtenga su Forma Normal de Greibach:\n\n"
-        + "\n".join(lineas)
-    )
+def _agregar_sin_repetir(g: Gramatica, cabeza: str, cuerpo: List[str], usados: dict) -> bool:
+    """Agrega g.agregar(cabeza, cuerpo) solo si esa variable no tiene ya
+    exactamente esa misma alternativa (misma cabeza y mismo cuerpo). Evita
+    producciones tipo A -> AB/AB. Devuelve True si se agregó."""
+    clave = tuple(cuerpo)
+    if clave in usados[cabeza]:
+        return False
+    usados[cabeza].add(clave)
+    g.agregar(cabeza, cuerpo)
+    return True
 
-    return Ejercicio(
-        variables=variables,
-        terminales=terminales,
-        inicial=inicial,
-        producciones=lineas,
-        gramatica=g,
-        tiene_recursividad_inmediata=tiene_inmediata,
-        tiene_recursividad_indirecta=tiene_indirecta,
-        enunciado=enunciado,
-    )
+
+def generar_ejercicio(
+    num_variables: int = 5,
+    num_terminales: int = 3,
+    producciones_por_variable_min: int = 2,
+    producciones_por_variable_max: int = 3,
+) -> dict:
+    num_variables = int(num_variables)
+    num_terminales = int(num_terminales)
+    producciones_por_variable_min = int(producciones_por_variable_min)
+    producciones_por_variable_max = int(producciones_por_variable_max)
+
+    if not (MIN_VARIABLES <= num_variables <= MAX_VARIABLES):
+        raise ValueError(f"num_variables debe estar entre {MIN_VARIABLES} y {MAX_VARIABLES}.")
+    if not (MIN_TERMINALES <= num_terminales <= MAX_TERMINALES):
+        raise ValueError(f"num_terminales debe estar entre {MIN_TERMINALES} y {MAX_TERMINALES}.")
+    if producciones_por_variable_min < MIN_PRODUCCIONES:
+        producciones_por_variable_min = MIN_PRODUCCIONES
+    if producciones_por_variable_max > MAX_PRODUCCIONES:
+        producciones_por_variable_max = MAX_PRODUCCIONES
+    if producciones_por_variable_min > producciones_por_variable_max:
+        producciones_por_variable_min = producciones_por_variable_max
+
+    intentos = 0
+    while True:
+        intentos += 1
+        if intentos > 200:
+            raise RuntimeError("No se pudo generar un ejercicio válido tras 200 intentos.")
+
+        variables = ALFABETO_VARIABLES[:num_variables]
+        terminales = random.sample(ALFABETO_TERMINALES, num_terminales)
+
+        inicial = variables[0]
+        g = Gramatica(variables=variables, terminales=terminales, inicial=inicial)
+        cuerpos_usados = {v: set() for v in variables}
+
+        for v in variables:
+            n_prods = random.randint(producciones_por_variable_min, producciones_por_variable_max)
+            intentos_v = 0
+            agregadas = 0
+            while agregadas < n_prods and intentos_v < 30:
+                intentos_v += 1
+                if _agregar_sin_repetir(g, v, _cuerpo_aleatorio(variables, terminales), cuerpos_usados):
+                    agregadas += 1
+
+        # Inyectar recursividad inmediata controlada
+        n_inmediatas = max(1, len(variables) // 3)
+        candidatas_inmediata = random.sample(variables, min(n_inmediatas, len(variables)))
+        usadas = set(candidatas_inmediata)
+        for v in candidatas_inmediata:
+            intentos_v = 0
+            while intentos_v < 10:
+                intentos_v += 1
+                if _agregar_sin_repetir(g, v, [v, random.choice(terminales)], cuerpos_usados):
+                    break
+
+        # Inyectar recursividad indirecta controlada (parejas, disjuntas de las usadas)
+        disponibles = [v for v in variables if v not in usadas]
+        n_parejas = max(1, len(variables) // 4)
+        for _ in range(n_parejas):
+            if len(disponibles) < 2:
+                break
+            a, b = random.sample(disponibles, 2)
+            disponibles = [x for x in disponibles if x not in (a, b)]
+            intentos_ab = 0
+            while intentos_ab < 10:
+                intentos_ab += 1
+                if _agregar_sin_repetir(g, a, [b, random.choice(terminales)], cuerpos_usados):
+                    break
+            intentos_ab = 0
+            while intentos_ab < 10:
+                intentos_ab += 1
+                if _agregar_sin_repetir(g, b, [a, random.choice(terminales)], cuerpos_usados):
+                    break
+            usadas.add(a)
+            usadas.add(b)
+
+        # Rechazar si algún grupo mutuamente recursivo quedó con más de 2 variables
+        sccs = _sccs_de(g)
+        if any(len(grupo) > 2 for grupo in sccs):
+            continue
+
+        return {
+            "variables": variables,
+            "terminales": terminales,
+            "inicial": inicial,
+            "gramatica": g.texto(),
+            "producciones": [
+                f"{v} -> " + "/".join(''.join(p.cuerpo) for p in g.producciones_de(v))
+                for v in variables if g.producciones_de(v)
+            ],
+        }

@@ -1,28 +1,53 @@
 import { useState } from 'react'
-import GramaticaForm from './components/GramaticaForm'
-import GeneradorEjercicios from './components/GeneradorEjercicios'
+import Encabezado from './components/Encabezado'
+import Sidebar from './components/Sidebar'
+import BarraAcciones from './components/BarraAcciones'
 import ValidacionPanel from './components/ValidacionPanel'
-import PasoCard from './components/PasoCard'
-import NavegacionPasos from './components/NavegacionPasos'
+import GramaticaActualBox from './components/GramaticaActualBox'
+import HistorialTransformaciones from './components/HistorialTransformaciones'
 import ResultadoFinal from './components/ResultadoFinal'
 import { validarGramatica, convertirGramatica } from './api'
 
 export default function App() {
   const [gramaticaTexto, setGramaticaTexto] = useState(null)
+  const [gramaticaRegistrada, setGramaticaRegistrada] = useState(null) // payload ya parseado
   const [validacion, setValidacion] = useState(null)
   const [resultado, setResultado] = useState(null)
-  const [modo, setModo] = useState('automatico')
-  const [pasoActual, setPasoActual] = useState(0)
+  // Cuántos pasos del historial se muestran. 0 = ninguno todavía.
+  // Esto es lo que hace que el "modo paso a paso" sea real: aunque el
+  // backend calcula el pipeline completo en una sola llamada, el frontend
+  // solo REVELA los pasos hasta este número, nunca todos de una vez.
+  const [pasoMaximoVisible, setPasoMaximoVisible] = useState(0)
   const [cargando, setCargando] = useState(false)
   const [errorGeneral, setErrorGeneral] = useState(null)
 
-  const manejarValidar = async (payload) => {
+  const registrar = (payload) => {
+    setGramaticaRegistrada(payload)
+    setValidacion(null)
+    setResultado(null)
+    setErrorGeneral(null)
+    setPasoMaximoVisible(0)
+  }
+
+  const limpiarTodo = () => {
+    setGramaticaTexto(null)
+    setGramaticaRegistrada(null)
+    setValidacion(null)
+    setResultado(null)
+    setErrorGeneral(null)
+    setPasoMaximoVisible(0)
+  }
+
+  const validar = async () => {
+    if (!gramaticaRegistrada) {
+      setErrorGeneral('Primero registra una gramática.')
+      return
+    }
     setCargando(true)
     setErrorGeneral(null)
     try {
-      const data = await validarGramatica(payload)
+      const data = await validarGramatica(gramaticaRegistrada)
       setValidacion(data)
-      setResultado(null)
     } catch (e) {
       setErrorGeneral(e.message)
     } finally {
@@ -30,128 +55,109 @@ export default function App() {
     }
   }
 
-  const manejarConvertir = async (payload, modoSolicitado) => {
+  // Asegura que el resultado completo esté calculado (una sola llamada al
+  // backend), sin revelar nada todavía. Devuelve el resultado.
+  const asegurarResultado = async () => {
+    if (resultado) return resultado
+    if (!gramaticaRegistrada) {
+      setErrorGeneral('Primero registra una gramática con "Registrar gramática".')
+      return null
+    }
     setCargando(true)
     setErrorGeneral(null)
-    setModo(modoSolicitado)
-    setPasoActual(0)
     try {
-      const data = await convertirGramatica(payload)
+      const data = await convertirGramatica(gramaticaRegistrada)
       setResultado(data)
       setValidacion(data.validacion_fnc)
+      return data
     } catch (e) {
       setErrorGeneral(e.data?.error || e.message)
       setResultado(null)
+      return null
     } finally {
       setCargando(false)
     }
   }
 
-  const manejarEjercicioGenerado = (ejercicio) => {
-    setGramaticaTexto({
-      variables: ejercicio.variables.join(', '),
-      terminales: ejercicio.terminales.join(', '),
-      inicial: ejercicio.inicial,
-      producciones: ejercicio.producciones.join('\n'),
-    })
-    setValidacion(null)
-    setResultado(null)
+  // Click en "Ejecutar proceso completo": calcula (si hace falta) y
+  // revela TODOS los pasos de una vez.
+  const ejecutarCompleto = async () => {
+    const data = await asegurarResultado()
+    if (data?.exito) setPasoMaximoVisible(data.pasos.length)
   }
+
+  // Click en el botón de un paso puntual (ej. "2. Recursividad indirecta"):
+  // calcula (si hace falta) y revela SOLO hasta ese paso, ni uno más.
+  const irAPaso = async (indice) => {
+    const data = await asegurarResultado()
+    if (data?.exito) setPasoMaximoVisible(indice + 1)
+  }
+
+  const pasosVisibles = resultado ? resultado.pasos.slice(0, pasoMaximoVisible) : []
+  const ultimoPasoVisible = pasosVisibles[pasosVisibles.length - 1]
+  const procesoCompletoVisible = resultado && pasoMaximoVisible >= resultado.pasos.length
+
+  const cajaGramaticaActual = ultimoPasoVisible
+    ? {
+        variables: ultimoPasoVisible.variables,
+        terminales: resultado.terminales,
+        inicial: ultimoPasoVisible.variables[0],
+        texto: ultimoPasoVisible.gramatica_resultante,
+      }
+    : gramaticaRegistrada
+    ? {
+        variables: gramaticaRegistrada.variables,
+        terminales: gramaticaRegistrada.terminales,
+        inicial: gramaticaRegistrada.inicial,
+        texto: gramaticaRegistrada.producciones.map((l) => l.replaceAll('/', ' | ')).join('\n'),
+      }
+    : null
 
   return (
     <div className="min-h-screen pb-16">
-      <header className="border-b border-pizarra-700 bg-pizarra-900/70 backdrop-blur sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-ambar-500 flex items-center justify-center font-display font-bold text-pizarra-950">
-            Λ
-          </div>
-          <div>
-            <h1 className="font-display font-semibold text-slate-100 leading-tight">
-              FNC → FNG
-            </h1>
-            <p className="text-[11px] text-slate-500 leading-tight">
-              Conversor paso a paso a Forma Normal de Greibach · Teoría de la Computación
-            </p>
-          </div>
-        </div>
-      </header>
+      <Encabezado />
 
-      <main className="max-w-5xl mx-auto px-4 mt-6 space-y-6">
-        <GeneradorEjercicios onGenerado={manejarEjercicioGenerado} />
-
-        <GramaticaForm
+      <main className="max-w-7xl mx-auto px-5 mt-6 grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-6">
+        <Sidebar
           valor={gramaticaTexto}
           onCambiar={setGramaticaTexto}
-          onValidar={manejarValidar}
-          onConvertir={manejarConvertir}
+          onRegistrar={registrar}
+          onLimpiar={limpiarTodo}
           cargando={cargando}
         />
 
-        {errorGeneral && (
-          <div className="border border-eliminada/40 bg-eliminada/10 text-eliminada rounded-lg px-4 py-3 text-sm">
-            {errorGeneral}
-          </div>
-        )}
+        <div className="space-y-6 min-w-0">
+          <BarraAcciones
+            onValidar={validar}
+            onIrAPaso={irAPaso}
+            onEjecutarCompleto={ejecutarCompleto}
+            onNuevaGramatica={limpiarTodo}
+            cargando={cargando}
+            pasoActualVisible={pasoMaximoVisible}
+          />
 
-        <ValidacionPanel validacion={validacion} />
-
-        {cargando && (
-          <div className="text-center text-sm text-slate-400 py-6">
-            Procesando conversión…
-          </div>
-        )}
-
-        {resultado?.exito && (
-          <>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setModo('automatico')}
-                className={`text-xs px-3 py-1.5 rounded-full border transition ${
-                  modo === 'automatico'
-                    ? 'bg-ambar-500 text-pizarra-950 border-ambar-500 font-semibold'
-                    : 'border-pizarra-600 text-slate-400 hover:border-slate-400'
-                }`}
-              >
-                Ver todo el proceso
-              </button>
-              <button
-                onClick={() => setModo('pasoapaso')}
-                className={`text-xs px-3 py-1.5 rounded-full border transition ${
-                  modo === 'pasoapaso'
-                    ? 'bg-ambar-500 text-pizarra-950 border-ambar-500 font-semibold'
-                    : 'border-pizarra-600 text-slate-400 hover:border-slate-400'
-                }`}
-              >
-                Paso a paso
-              </button>
+          {errorGeneral && (
+            <div className="border border-eliminada/40 bg-eliminada/10 text-eliminada rounded-lg px-4 py-3 text-sm">
+              {errorGeneral}
             </div>
+          )}
 
-            {modo === 'automatico' ? (
-              <div className="space-y-6">
-                {resultado.pasos.map((paso) => (
-                  <PasoCard key={paso.numero} paso={paso} />
-                ))}
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <NavegacionPasos
-                  actual={pasoActual}
-                  total={resultado.pasos.length}
-                  onCambiar={setPasoActual}
-                />
-                <PasoCard paso={resultado.pasos[pasoActual]} />
-              </div>
-            )}
+          <ValidacionPanel validacion={validacion} />
 
-            <ResultadoFinal resultado={resultado} />
-          </>
-        )}
+          {cargando && (
+            <div className="text-center text-sm text-slate-400 py-4">Procesando…</div>
+          )}
 
-        {resultado && !resultado.exito && resultado.validacion_fnc?.valido === false && (
-          <p className="text-sm text-slate-400">
-            Corrige los errores de validación de arriba para poder convertir la gramática.
-          </p>
-        )}
+          {cajaGramaticaActual && (
+            <GramaticaActualBox {...cajaGramaticaActual} indiceSigma={pasoMaximoVisible} />
+          )}
+
+          {pasosVisibles.length > 0 && (
+            <HistorialTransformaciones pasos={pasosVisibles} terminales={resultado.terminales} />
+          )}
+
+          {procesoCompletoVisible && <ResultadoFinal resultado={resultado} />}
+        </div>
       </main>
     </div>
   )
