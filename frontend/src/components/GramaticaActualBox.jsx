@@ -1,8 +1,16 @@
 import { notacionTupla, agruparPorVariable } from '../utils'
 
-export default function GramaticaActualBox({ variables, terminales, inicial, texto, indiceSigma }) {
-  if (!texto) return null
-  const grupos = agruparPorVariable(texto)
+export default function GramaticaActualBox({ variables, terminales, inicial, texto, indiceSigma, produccionesPorVariable }) {
+  if (!texto && !produccionesPorVariable) return null
+
+  // Si viene la marca estructurada (con estado nueva/normal) se usa esa;
+  // si no, se cae al parseo de texto plano de siempre (todo "normal").
+  const grupos = produccionesPorVariable
+    ? Object.entries(produccionesPorVariable)
+    : agruparPorVariable(texto).map(([cabeza, alternativas]) => [
+        cabeza,
+        alternativas.map((alt) => ({ cuerpo: alt, estado: 'normal' })),
+      ])
 
   return (
     <div className="bg-pizarra-800 border border-pizarra-600 rounded-xl p-5">
@@ -25,8 +33,13 @@ export default function GramaticaActualBox({ variables, terminales, inicial, tex
             <span className="text-ambar-500/70">→</span>
             <div className="flex flex-wrap gap-x-2 gap-y-1">
               {alternativas.map((alt, j) => (
-                <span key={j} className="font-mono text-sm text-slate-300">
-                  {alt}
+                <span
+                  key={j}
+                  className={`font-mono text-sm ${
+                    alt.estado === 'nueva' ? 'text-nueva font-semibold' : 'text-slate-300'
+                  }`}
+                >
+                  {alt.cuerpo}
                   {j < alternativas.length - 1 && <span className="text-slate-600"> | </span>}
                 </span>
               ))}

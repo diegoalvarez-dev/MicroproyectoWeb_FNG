@@ -126,9 +126,37 @@ export default function HistorialTransformaciones({ pasos, terminales }) {
 
             <div>
               <p className="text-[11px] text-slate-500 mb-1">gramática resultante de este paso</p>
-              <pre className="font-mono text-xs bg-pizarra-950 border border-pizarra-700 rounded-lg p-3 overflow-x-auto scrollbar-delgada text-slate-300 whitespace-pre">
-                {paso.gramatica_resultante}
-              </pre>
+              {paso.producciones_por_variable ? (
+                <div className="font-mono text-xs bg-pizarra-950 border border-pizarra-700 rounded-lg p-3 overflow-x-auto scrollbar-delgada space-y-1.5">
+                  {Object.entries(paso.producciones_por_variable).map(([cabeza, alternativas], i) => (
+                    <div key={i} className="flex flex-wrap items-baseline gap-1">
+                      <span className="font-semibold text-ambar-400">{cabeza}</span>
+                      <span className="text-ambar-500/70">→</span>
+                      <div className="flex flex-wrap gap-x-1.5 gap-y-1">
+                        {alternativas.map((alt, j) => (
+                          <span
+                            key={j}
+                            className={
+                              alt.estado === 'nueva'
+                                ? 'text-nueva font-semibold'
+                                : 'text-slate-300'
+                            }
+                          >
+                            {alt.cuerpo}
+                            {j < alternativas.length - 1 && (
+                              <span className="text-slate-600"> | </span>
+                            )}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <pre className="font-mono text-xs bg-pizarra-950 border border-pizarra-700 rounded-lg p-3 overflow-x-auto scrollbar-delgada text-slate-300 whitespace-pre">
+                  {paso.gramatica_resultante}
+                </pre>
+              )}
             </div>
           </div>
         )

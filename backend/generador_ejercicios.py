@@ -7,7 +7,8 @@ directamente num_variables, num_terminales, producciones_por_variable_min
 y producciones_por_variable_max (los que manda el frontend según el nivel
 elegido: fácil/media/difícil). Los terminales pueden ser letras o
 números, se evita repetir la misma alternativa dos veces para una misma
-variable, y se inyecta recursividad inmediata e indirecta de forma
+variable, se garantiza que toda variable declarada sea alcanzable desde
+la inicial, y se inyecta recursividad inmediata e indirecta de forma
 controlada (nunca grupos de más de 2 variables mutuamente recursivas,
 para que la conversión no explote combinatoriamente).
 """
@@ -44,6 +45,49 @@ def _cuerpo_aleatorio(variables: List[str], terminales: List[str]) -> List[str]:
 def _sccs_de(g: Gramatica):
     from recursividad import construir_grafo_cabeza, encontrar_sccs
     return encontrar_sccs(construir_grafo_cabeza(g))
+
+
+def _variables_alcanzables(g: Gramatica) -> set:
+    alcanzables = {g.inicial}
+    pendientes = [g.inicial]
+    while pendientes:
+        actual = pendientes.pop()
+        for p in g.producciones_de(actual):
+            for simbolo in p.cuerpo:
+                if simbolo in g.variables and simbolo not in alcanzables:
+                    alcanzables.add(simbolo)
+                    pendientes.append(simbolo)
+    return alcanzables
+
+
+def _asegurar_alcanzables(g: Gramatica, terminales: List[str], cuerpos_usados: dict) -> None:
+    """Conecta cualquier variable que haya quedado inalcanzable desde el
+    símbolo inicial: le agrega una producción nueva a alguna variable ya
+    alcanzable que la incluya (forma VntVt o VtVnt), hasta que todas las
+    variables declaradas sean alcanzables desde el inicio. Sin esto, el
+    generador podía crear gramáticas con variables "sueltas" que el
+    validador de FNC marca correctamente como inalcanzables (VAL010)."""
+    alcanzables = _variables_alcanzables(g)
+    faltantes = [v for v in g.variables if v not in alcanzables]
+
+    for v in faltantes:
+        origen = random.choice(list(alcanzables))
+        intentos = 0
+        agregado = False
+        while intentos < 20 and not agregado:
+            intentos += 1
+            if random.random() < 0.5:
+                cuerpo = [v, random.choice(terminales)]       # VntVt
+            else:
+                cuerpo = [random.choice(terminales), v]        # VtVnt
+            if _agregar_sin_repetir(g, origen, cuerpo, cuerpos_usados):
+                agregado = True
+        if not agregado:
+            for t in terminales:
+                if _agregar_sin_repetir(g, origen, [v, t], cuerpos_usados):
+                    agregado = True
+                    break
+        alcanzables.add(v)
 
 
 def _agregar_sin_repetir(g: Gramatica, cabeza: str, cuerpo: List[str], usados: dict) -> bool:
@@ -134,7 +178,13 @@ def generar_ejercicio(
             usadas.add(a)
             usadas.add(b)
 
-        # Rechazar si algún grupo mutuamente recursivo quedó con más de 2 variables
+        # Garantizar que toda variable declarada sea alcanzable desde la
+        # inicial (si no, el validador de FNC la rechaza con VAL010).
+        _asegurar_alcanzables(g, terminales, cuerpos_usados)
+
+        # Rechazar si algún grupo mutuamente recursivo quedó con más de 2
+        # variables (puede pasar tanto por la generación aleatoria como por
+        # las conexiones de alcanzabilidad que se acaban de agregar).
         sccs = _sccs_de(g)
         if any(len(grupo) > 2 for grupo in sccs):
             continue
