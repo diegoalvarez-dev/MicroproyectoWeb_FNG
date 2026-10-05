@@ -3,6 +3,10 @@ api.py
 Servidor Flask con los endpoints del conversor FNC -> FNG.
 """
 
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from flask import Flask, request, jsonify
 
 from models import parsear_lineas_gramatica, ExplosionDeProducciones
