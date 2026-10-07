@@ -127,14 +127,18 @@ export default function App() {
         />
 
         <div className="space-y-6 min-w-0">
-          <BarraAcciones
-            onValidar={validar}
-            onIrAPaso={irAPaso}
-            onEjecutarCompleto={ejecutarCompleto}
-            onNuevaGramatica={limpiarTodo}
-            cargando={cargando}
-            pasoActualVisible={pasoMaximoVisible}
-          />
+          {/* Antes de registrar una gramática no hay nada que accionar
+              todavía, así que los botones de pasos ni siquiera se muestran. */}
+          {gramaticaRegistrada && (
+            <BarraAcciones
+              onValidar={validar}
+              onIrAPaso={irAPaso}
+              onEjecutarCompleto={ejecutarCompleto}
+              onNuevaGramatica={limpiarTodo}
+              cargando={cargando}
+              pasoActualVisible={pasoMaximoVisible}
+            />
+          )}
 
           {errorGeneral && (
             <div className="border border-eliminada/40 bg-eliminada/10 text-eliminada rounded-lg px-4 py-3 text-sm">
@@ -148,8 +152,14 @@ export default function App() {
             <div className="text-center text-sm text-slate-400 py-4">Procesando…</div>
           )}
 
-          {cajaGramaticaActual && (
+          {cajaGramaticaActual ? (
             <GramaticaActualBox {...cajaGramaticaActual} indiceSigma={pasoMaximoVisible} />
+          ) : (
+            <div className="border border-dashed border-pizarra-600 rounded-xl min-h-[280px] flex items-center justify-center px-6 py-10">
+              <p className="text-sm text-slate-500 text-center max-w-sm">
+                Registra una gramática para comenzar el proceso de conversion.
+              </p>
+            </div>
           )}
 
           {pasosVisibles.length > 0 && (

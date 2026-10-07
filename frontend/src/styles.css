@@ -24,7 +24,7 @@
 body {
   background-color: #0b0f14;
   background-image:
-    radial-gradient(circle at 15% 10%, rgba(226,165,58,0.06), transparent 40%),
+    radial-gradient(circle at 15% 10%, rgba(139,92,246,0.07), transparent 40%),
     radial-gradient(circle at 85% 0%, rgba(52,211,153,0.05), transparent 35%);
   color: #e6edf3;
 }
@@ -32,7 +32,7 @@ body {
 /* flecha de producción, estilo "gramática formal" */
 .flecha-produccion::after {
   content: '→';
-  color: #e2a53a;
+  color: #a78bfa;
   margin: 0 0.4rem;
   font-weight: 700;
 }
