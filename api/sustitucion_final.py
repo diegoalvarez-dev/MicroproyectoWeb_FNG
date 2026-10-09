@@ -5,7 +5,7 @@ terminal (Forma Normal de Greibach).
 """
 
 from dataclasses import dataclass, field
-from typing import List, Tuple
+from typing import List, Set, Tuple
 from models import Gramatica, Produccion, es_terminal, es_no_terminal, ExplosionDeProducciones
 
 MAX_PRODUCCIONES_INTERNO = 4000
@@ -59,19 +59,29 @@ def sustitucion_final(g: Gramatica) -> Tuple[Gramatica, List[EventoSustitucion]]
             nuevas_prods: List[Produccion] = []
             despues_marcadas: List[ProduccionMarcada] = []
             variables_sustituidas = set()
+            # Misma deduplicación que en orden_indices.py: sin esto, la
+            # cantidad de producciones se infla con duplicados exactos
+            # cuando hay varias variables con varias alternativas cada una.
+            vistos: Set[Tuple[str, tuple]] = set()
+
+            def _agregar(p_nueva: Produccion, estado: str) -> None:
+                clave = (p_nueva.cabeza, tuple(p_nueva.cuerpo))
+                if clave in vistos:
+                    return
+                vistos.add(clave)
+                nuevas_prods.append(p_nueva)
+                despues_marcadas.append(ProduccionMarcada(str(p_nueva), estado))
+
             for p in prods:
                 if p not in problematicas:
-                    nuevas_prods.append(p)
-                    despues_marcadas.append(ProduccionMarcada(str(p), "normal"))
+                    _agregar(Produccion(p.cabeza, list(p.cuerpo)), "normal")
                     continue
                 j = p.cuerpo[0]
                 resto = p.cuerpo[1:]
                 variables_sustituidas.add(j)
                 for q in nueva.producciones_de(j):
                     nuevo_cuerpo = list(q.cuerpo) + list(resto)
-                    nueva_p = Produccion(v, nuevo_cuerpo)
-                    nuevas_prods.append(nueva_p)
-                    despues_marcadas.append(ProduccionMarcada(str(nueva_p), "nueva"))
+                    _agregar(Produccion(v, nuevo_cuerpo), "nueva")
 
             for p in prods:
                 nueva.eliminar(p)

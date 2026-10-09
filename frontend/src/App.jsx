@@ -97,21 +97,25 @@ export default function App() {
   const ultimoPasoVisible = pasosVisibles[pasosVisibles.length - 1]
   const procesoCompletoVisible = resultado && pasoMaximoVisible >= resultado.pasos.length
 
-  const cajaGramaticaActual = ultimoPasoVisible
-    ? {
-        variables: ultimoPasoVisible.variables,
-        terminales: resultado.terminales,
-        inicial: ultimoPasoVisible.variables[0],
-        texto: ultimoPasoVisible.gramatica_resultante,
-      }
-    : gramaticaRegistrada
-    ? {
-        variables: gramaticaRegistrada.variables,
-        terminales: gramaticaRegistrada.terminales,
-        inicial: gramaticaRegistrada.inicial,
-        texto: gramaticaRegistrada.producciones.map((l) => l.replaceAll('/', ' | ')).join('\n'),
-      }
-    : null
+ const cajaGramaticaActual = ultimoPasoVisible
+  ? {
+      variables: ultimoPasoVisible.variables,
+      terminales: resultado.terminales,
+      inicial: ultimoPasoVisible.variables[0],
+      texto: ultimoPasoVisible.gramatica_resultante,
+      // Solo es FNG de verdad cuando el paso visible es el 5 (sustitución
+      // final) — en los pasos 1 a 4 todavía no se terminó de convertir.
+      esFNG: ultimoPasoVisible.clave === 'sustitucion_final',
+    }
+  : gramaticaRegistrada
+  ? {
+      variables: gramaticaRegistrada.variables,
+      terminales: gramaticaRegistrada.terminales,
+      inicial: gramaticaRegistrada.inicial,
+      texto: gramaticaRegistrada.producciones.map((l) => l.replaceAll('/', ' | ')).join('\n'),
+      esFNG: false,
+    }
+  : null
 
   return (
     <div className="min-h-screen pb-16">

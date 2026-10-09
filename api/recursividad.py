@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Set, Tuple
 from models import Gramatica, Produccion, es_no_terminal, ExplosionDeProducciones
 
-MAX_PRODUCCIONES_INTERNO = 4000
+MAX_PRODUCCIONES_INTERNO = 6000
 MAX_RONDAS_POR_GRUPO = 60
 
 
@@ -145,6 +145,21 @@ def eliminar_recursividad_indirecta(g: Gramatica) -> Tuple[Gramatica, List[Event
                     excluidas: List[ProduccionExcluida] = []
                     cambio_en_v = False
                     variables_sustituidas: Set[str] = set()
+                    # Deduplicación: con varias variables mutuamente
+                    # recursivas a la vez, distintos caminos de sustitución
+                    # pueden generar exactamente la misma producción
+                    # (misma cabeza + mismo cuerpo). Sin esto, el conteo se
+                    # infla sin que la gramática resultante sea distinta.
+                    vistos: Set[Tuple[str, tuple]] = set()
+
+                    def _agregar(p_nueva: Produccion, estado: str) -> bool:
+                        clave = (p_nueva.cabeza, tuple(p_nueva.cuerpo))
+                        if clave in vistos:
+                            return False
+                        vistos.add(clave)
+                        nuevas_prods.append(p_nueva)
+                        despues_marcadas.append(ProduccionMarcada(str(p_nueva), estado))
+                        return True
 
                     for p in snapshot[v]:
                         cabeza_cuerpo0 = p.cuerpo[0] if p.cuerpo else None
@@ -167,12 +182,10 @@ def eliminar_recursividad_indirecta(g: Gramatica) -> Tuple[Gramatica, List[Event
                                     ))
                                     continue
                                 nueva_p = Produccion(v, list(q.cuerpo) + list(resto))
-                                nuevas_prods.append(nueva_p)
-                                despues_marcadas.append(ProduccionMarcada(str(nueva_p), "nueva"))
+                                _agregar(nueva_p, "nueva")
                         else:
-                            nuevas_prods.append(p)
-                            antes_marcadas.append(ProduccionMarcada(str(p), "normal"))
-                            despues_marcadas.append(ProduccionMarcada(str(p), "normal"))
+                            nueva_p = Produccion(p.cabeza, list(p.cuerpo))
+                            _agregar(nueva_p, "normal")
 
                     cambios_por_variable[v] = nuevas_prods
                     if cambio_en_v:
@@ -251,27 +264,46 @@ def eliminar_recursividad_inmediata(g: Gramatica) -> Tuple[Gramatica, List[Event
         for p in prods:
             nueva.eliminar(p)
 
+        # Deduplicación también aquí: si dos producciones no recursivas
+        # distintas tenían cuerpos idénticos, o la combinación con v_aux
+        # coincide, no se repiten.
+        vistos_v: Set[Tuple[str, tuple]] = set()
         despues_marcadas: List[ProduccionMarcada] = []
         nuevas_v: List[Produccion] = []
+
+        def _agregar_v(p_nueva: Produccion, estado: str) -> None:
+            clave = (p_nueva.cabeza, tuple(p_nueva.cuerpo))
+            if clave in vistos_v:
+                return
+            vistos_v.add(clave)
+            nuevas_v.append(p_nueva)
+            despues_marcadas.append(ProduccionMarcada(f"{p_nueva.cabeza} -> {''.join(p_nueva.cuerpo) if p_nueva.cuerpo else 'ε'}", estado))
+
         for p in no_recursivas:
-            nuevas_v.append(Produccion(v, list(p.cuerpo)))
-            despues_marcadas.append(ProduccionMarcada(f"{v} -> {''.join(p.cuerpo)}", "normal"))
+            _agregar_v(Produccion(v, list(p.cuerpo)), "normal")
         for p in no_recursivas:
             nuevo_cuerpo = list(p.cuerpo) + [v_aux]
-            nuevas_v.append(Produccion(v, nuevo_cuerpo))
-            despues_marcadas.append(ProduccionMarcada(f"{v} -> {''.join(nuevo_cuerpo)}", "nueva"))
+            _agregar_v(Produccion(v, nuevo_cuerpo), "nueva")
 
+        vistos_aux: Set[Tuple[str, tuple]] = set()
         prods_aux: List[Produccion] = []
         aux_marcadas: List[ProduccionMarcada] = []
+
+        def _agregar_aux(p_nueva: Produccion, estado: str) -> None:
+            clave = (p_nueva.cabeza, tuple(p_nueva.cuerpo))
+            if clave in vistos_aux:
+                return
+            vistos_aux.add(clave)
+            prods_aux.append(p_nueva)
+            aux_marcadas.append(ProduccionMarcada(f"{p_nueva.cabeza} -> {''.join(p_nueva.cuerpo)}", estado))
+
         for p in recursivas:
             alfa = p.cuerpo[1:]
-            prods_aux.append(Produccion(v_aux, list(alfa)))
-            aux_marcadas.append(ProduccionMarcada(f"{v_aux} -> {''.join(alfa)}", "nueva"))
+            _agregar_aux(Produccion(v_aux, list(alfa)), "nueva")
         for p in recursivas:
             alfa = p.cuerpo[1:]
             nuevo_cuerpo = list(alfa) + [v_aux]
-            prods_aux.append(Produccion(v_aux, nuevo_cuerpo))
-            aux_marcadas.append(ProduccionMarcada(f"{v_aux} -> {''.join(nuevo_cuerpo)}", "nueva"))
+            _agregar_aux(Produccion(v_aux, nuevo_cuerpo), "nueva")
 
         nueva.producciones.extend(nuevas_v)
         nueva.producciones.extend(prods_aux)

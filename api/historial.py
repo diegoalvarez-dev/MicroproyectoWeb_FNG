@@ -13,8 +13,7 @@ from recursividad import eliminar_recursividad_indirecta, eliminar_recursividad_
 from orden_indices import eliminar_orden_indices
 from sustitucion_final import sustitucion_final, validar_fng
 
-MAX_PRODUCCIONES = 1500
-
+MAX_PRODUCCIONES = 6000
 
 def _verificar_limite(g: Gramatica, nombre_paso: str) -> None:
     if len(g.producciones) > MAX_PRODUCCIONES:

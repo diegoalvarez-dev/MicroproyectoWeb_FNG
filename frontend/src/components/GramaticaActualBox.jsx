@@ -1,6 +1,6 @@
 import { notacionTupla, agruparPorVariable } from '../utils'
 
-export default function GramaticaActualBox({ variables, terminales, inicial, texto, indiceSigma, produccionesPorVariable }) {
+export default function GramaticaActualBox({ variables, terminales, inicial, texto, indiceSigma, produccionesPorVariable, esFNG }) {
   if (!texto && !produccionesPorVariable) return null
 
   // Si viene la marca estructurada (con estado nueva/normal) se usa esa;
@@ -22,7 +22,7 @@ export default function GramaticaActualBox({ variables, terminales, inicial, tex
           </span>
         </div>
         <p className="font-mono text-xs text-slate-500">
-          {notacionTupla({ variables, terminales, inicial })}
+          {notacionTupla({ variables, terminales, inicial, prefijo: esFNG ? 'G(FNG)' : 'G' })}
         </p>
       </div>
 

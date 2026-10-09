@@ -9,6 +9,11 @@ const NIVELES = [
   { valor: 'dificil', etiqueta: 'Difícil', vars: 8, term: 4, prodMin: 3, prodMax: 4 },
 ]
 
+// Vnt: solo letras mayúsculas (sin dígitos, sin minúsculas, sin símbolos).
+const TOKEN_VNT_VALIDO = /^[A-Z]+$/
+// Vt: solo dígitos o letras minúsculas.
+const TOKEN_VT_VALIDO = /^[a-z0-9]+$/
+
 // "A -> AB/a\nB -> b" -> { A: 'AB/a', B: 'b' }
 function lineasAMapa(producciones) {
   const mapa = {}
@@ -32,12 +37,25 @@ function listaDeVariables(texto) {
     .filter(Boolean)
 }
 
+// Verdadero si la lista está vacía (todavía no se terminó de escribir) o si
+// TODOS los tokens cumplen la regex dada. Solo se considera "inválido" (rojo)
+// cuando hay contenido que no cumple.
+function todosCumplen(tokens, regex) {
+  return tokens.every((t) => regex.test(t))
+}
+
 export default function Sidebar({ valor, onCambiar, onRegistrar, onLimpiar, cargando }) {
   const [local, setLocal] = useState(valor || VACIO)
   const [produccionesMapa, setProduccionesMapa] = useState(() => lineasAMapa((valor || VACIO).producciones))
   const [nivel, setNivel] = useState('media')
   const [generando, setGenerando] = useState(false)
   const [errorGenerador, setErrorGenerador] = useState(null)
+  // Snapshot de la gramática tal como quedó la última vez que se registró.
+  // A diferencia de "local" (que sigue cambiando mientras el usuario edita),
+  // esto NO se actualiza con cada tecla: solo cambia al registrar de nuevo
+  // o al limpiar campos. Sirve para ver cómo era la gramática original
+  // mientras se navega por los pasos de la conversión.
+  const [gramaticaOriginal, setGramaticaOriginal] = useState(null)
 
   // Si viene una gramática nueva desde afuera (ej. el generador de
   // ejercicios), se recarga tanto el texto plano como el mapa por variable.
@@ -49,6 +67,19 @@ export default function Sidebar({ valor, onCambiar, onRegistrar, onLimpiar, carg
   }, [valor])
 
   const variablesActuales = listaDeVariables(local.variables)
+  const terminalesActuales = listaDeVariables(local.terminales.replaceAll(',', ' '))
+
+  const vntValido = todosCumplen(variablesActuales, TOKEN_VNT_VALIDO)
+  const vtValido = todosCumplen(terminalesActuales, TOKEN_VT_VALIDO)
+  const inicialTexto = local.inicial.trim()
+  const inicialValido = inicialTexto === '' || variablesActuales.includes(inicialTexto)
+
+  const formularioValido =
+    vntValido &&
+    vtValido &&
+    inicialValido &&
+    variablesActuales.length > 0 &&
+    inicialTexto !== ''
 
   // Cada vez que cambia la lista de variables (VNT), se sincroniza el mapa
   // de producciones: se agregan campos vacíos para variables nuevas y se
@@ -113,9 +144,32 @@ export default function Sidebar({ valor, onCambiar, onRegistrar, onLimpiar, carg
     }
   }
 
+  const registrar = () => {
+    if (!formularioValido) return
+    const payload = construirPayload()
+    // Guarda una foto fija de cómo quedó la gramática en el momento de
+    // registrar, para el panel "Gramática original" de abajo.
+    setGramaticaOriginal({
+      variables: variablesActuales,
+      terminales: payload.terminales,
+      inicial: payload.inicial,
+      produccionesPorVariable: Object.fromEntries(
+        variablesActuales.map((v) => [
+          v,
+          (produccionesMapa[v] || '')
+            .split('/')
+            .map((s) => s.trim())
+            .filter(Boolean),
+        ])
+      ),
+    })
+    onRegistrar(payload)
+  }
+
   const limpiar = () => {
     setLocal(VACIO)
     setProduccionesMapa({})
+    setGramaticaOriginal(null)
     onLimpiar?.()
   }
 
@@ -168,32 +222,47 @@ export default function Sidebar({ valor, onCambiar, onRegistrar, onLimpiar, carg
 
         <Campo label="Variables (Vnt)" ejemplo="ej. S, A, B">
           <input
-            className="input"
+            className={`input ${!vntValido ? 'border-eliminada focus:border-eliminada ring-2 ring-eliminada/30' : ''}`}
             placeholder="S, A, B"
             value={local.variables}
             onChange={(e) => actualizar('variables', e.target.value)}
           />
+          {!vntValido && (
+            <span className="block text-[10px] text-eliminada mt-1">
+              Solo se permiten letras mayúsculas (sin números ni símbolos).
+            </span>
+          )}
         </Campo>
 
         <Campo label="Terminales (Vt)" ejemplo="ej. a, b, 1, 2">
           <input
-            className="input"
+            className={`input ${!vtValido ? 'border-eliminada focus:border-eliminada ring-2 ring-eliminada/30' : ''}`}
             placeholder="a, b"
             value={local.terminales}
             onChange={(e) => actualizar('terminales', e.target.value)}
           />
+          {!vtValido && (
+            <span className="block text-[10px] text-eliminada mt-1">
+              Solo se permiten letras minúsculas o números.
+            </span>
+          )}
         </Campo>
 
         <Campo label="Símbolo inicial">
           <input
-            className="input"
+            className={`input ${!inicialValido ? 'border-eliminada focus:border-eliminada ring-2 ring-eliminada/30' : ''}`}
             placeholder="S"
             value={local.inicial}
             onChange={(e) => actualizar('inicial', e.target.value)}
           />
+          {!inicialValido && (
+            <span className="block text-[10px] text-eliminada mt-1">
+              Debe ser una de las variables (Vnt) declaradas arriba.
+            </span>
+          )}
         </Campo>
 
-        {variablesActuales.length > 0 && (
+        {variablesActuales.length > 0 && vntValido ? (
           <div className="space-y-2 pt-1 border-t border-pizarra-700">
             <p className="text-[11px] uppercase tracking-widest text-slate-500 font-mono pt-2">
               Producciones
@@ -218,11 +287,17 @@ export default function Sidebar({ valor, onCambiar, onRegistrar, onLimpiar, carg
               alternativas separadas por / (ej: AB/CD/a/1)
             </p>
           </div>
+        ) : (
+          variablesActuales.length > 0 && (
+            <p className="text-[11px] text-eliminada/80 pt-1 border-t border-pizarra-700 pt-2">
+              Corrige las variables (Vnt) para poder escribir las producciones.
+            </p>
+          )
         )}
 
         <button
-          onClick={() => onRegistrar(construirPayload())}
-          disabled={cargando}
+          onClick={registrar}
+          disabled={cargando || !formularioValido}
           className="w-full bg-pizarra-600 hover:bg-pizarra-600/70 border border-ambar-500/30
                      text-slate-100 font-semibold text-sm px-4 py-2.5 rounded-lg transition
                      disabled:opacity-50"
@@ -237,7 +312,48 @@ export default function Sidebar({ valor, onCambiar, onRegistrar, onLimpiar, carg
           Limpiar campos
         </button>
       </div>
+
+      {/* GRAMÁTICA ORIGINAL: foto fija de lo registrado, no se actualiza
+          mientras se navega por los pasos de la conversión. */}
+      {gramaticaOriginal && <GramaticaOriginalBox gramatica={gramaticaOriginal} />}
     </aside>
+  )
+}
+
+function GramaticaOriginalBox({ gramatica }) {
+  const { variables, terminales, inicial, produccionesPorVariable } = gramatica
+  return (
+    <div className="bg-pizarra-800 border border-pizarra-600 rounded-xl p-4 space-y-3">
+      <div className="flex items-start justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
+          <p className="text-[11px] uppercase tracking-widest text-ambar-400 font-mono font-semibold">
+            Gramática original
+          </p>
+          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-ambar-500/50 text-ambar-400 bg-ambar-500/10">
+            Σ0
+          </span>
+        </div>
+        <p className="font-mono text-[11px] text-slate-500 text-right">
+          G = ({'{'}{variables.join(', ')}{'}'}, {inicial}, {'{'}{terminales.join(', ')}{'}'}, Σ)
+        </p>
+      </div>
+
+      <div className="space-y-1.5">
+        {variables.map((v) => (
+          <div key={v} className="flex items-baseline gap-2 font-mono text-xs">
+            <span className="font-bold text-ambar-400 w-4 shrink-0">{v}</span>
+            <span className="text-ambar-500/70">→</span>
+            {produccionesPorVariable[v]?.length ? (
+              <span className="text-slate-300 break-all">
+                {produccionesPorVariable[v].join(' / ')}
+              </span>
+            ) : (
+              <span className="text-slate-600 italic">(sin producciones)</span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 
