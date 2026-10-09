@@ -1,8 +1,7 @@
 export function notacionTupla({ variables = [], terminales = [], inicial = '', prefijo = 'G' }) {
   const V = `{${variables.join(', ')}}`
   const T = `{${terminales.join(', ')}}`
-  return `${prefijo} = (${V}, ${inicial}, ${T}, P)`
-}
+  return `${prefijo} = (${V}, ${inicial}, ${T}, Σ)`}
 
 // Agrupa un texto de gramática "A -> BC | c\nB -> ..." en pares [variable, [alternativas]]
 export function agruparPorVariable(texto) {
